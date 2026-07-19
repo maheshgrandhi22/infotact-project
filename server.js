@@ -1,50 +1,37 @@
-const express = require("express");
-const cors = require("cors");
-// 1. Import your new Week 3 prompt template module
-const { compileContextAwarePrompt } = require("./promptTemplate"); 
+console.log("DEBUG: Checking API Key...");
+console.log("Key found:", process.env.GEMINI_API_KEY ? "Yes, length is " + process.env.GEMINI_API_KEY.length : "NO! Key is missing.");
+require('dotenv').config();
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "http://localhost:3000" } });
 
-app.post("/api/generate", (req, res) => {
-  // Extract both the script payload and the synchronized DOM state sent by the frontend
-  const { code, domState } = req.body; 
+// Initialize Gemini
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-  // Fallback state in case older frontend versions hit the endpoint
-  const activeDomState = domState || { 
-    amortizedYield: "450000", 
-    debtLiabilities: "120005", 
-    timestamp: new Date().toISOString() 
-  };
+let lastGenerationTime = 0;
 
-  // 2. Compile the context-aware prompt using your template
-  const compiledPrompt = compileContextAwarePrompt(code || "", activeDomState);
-  
-  // Log it to your terminal so you can verify the LLM context is perfectly formatted
-  console.log("\n--- [WEEK 3] COMPILED LLM PROMPT MATRIX ---");
-  console.log(compiledPrompt);
-  console.log("-------------------------------------------\n");
-
-  // 3. Your existing Week 2 AST Safety Analysis Engine running below
-  // (Assuming basic pattern matching or full AST parsing here)
-  const codeToCheck = code || "";
-  if (codeToCheck.includes("window") || codeToCheck.includes("document") || codeToCheck.includes("localStorage")) {
-    return res.status(400).json({
-      success: false,
-      error: "Security Violation: Unauthorized API 'window/document' environment exposure detected."
-    });
-  }
-
-  // If everything passes, return success along with the state confirmation
-  res.json({
-    success: true,
-    message: "AST check clean. Prompt compilation matrix synchronized.",
-    contextPreserved: activeDomState
+io.on('connection', (socket) => {
+  socket.on('telemetry_data', async (data) => {
+    const now = Date.now();
+    if (data.score > 10 && (now - lastGenerationTime) > 60000) {
+      lastGenerationTime = now;
+      try {
+        const result = await model.generateContent("Generate a simplified React wizard component using Tailwind CSS. Return ONLY the code.");
+        const generatedCode = result.response.text();
+        
+        // You can keep your existing validateGeneratedCode function here
+        socket.emit('code_update', { code: generatedCode });
+      } catch (err) {
+        console.error("Gemini Error:", err.message);
+      }
+    }
   });
 });
 
-const PORT = 5000;
-app.listen(PORT, () => {
-  console.log(`[AuraGen Backend] Secure validation engine running on port ${PORT}...`);
-});
+server.listen(5000, () => console.log("[AuraGen] Backend running on port 5000 with Gemini"));
