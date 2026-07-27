@@ -1,62 +1,53 @@
-"use client";
-import { useEffect, useState, useRef } from "react";
-import { io } from "socket.io-client";
+import { Server, Socket } from 'socket.io';
 
-// Connect to the backend
-const socket = io("http://localhost:5000");
+const io = new Server(5000, {
+  cors: {
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST"]
+  }
+});
 
-export default function TelemetryTracker() {
-  const [score, setScore] = useState(0);
-  const [generatedCode, setGeneratedCode] = useState(null);
-  const [status, setStatus] = useState("Monitoring friction...");
+const clientHistory = new Map<string, { lastX: number; lastY: number; lastTime: number; score: number }>();
+
+io.on('connection', (socket: Socket) => {
+  console.log(`Client connected: ${socket.id}`);
   
-  // Track mouse movement to calculate "friction"
-  const mouseMoveCount = useRef(0);
+  clientHistory.set(socket.id, { lastX: 0, lastY: 0, lastTime: Date.now(), score: 0 });
 
-  useEffect(() => {
-    // 1. Listen for AI UI updates
-    socket.on("code_update", (data) => {
-      setGeneratedCode(data.code);
-      setStatus("UI Updated successfully!");
-    });
-
-    socket.on("code_error", (err) => {
-      setStatus(`Error: ${err.message}`);
-    });
-
-    // 2. Friction calculation loop (every 1 second)
-    const interval = setInterval(() => {
-      const currentFriction = mouseMoveCount.current;
-      setScore(currentFriction);
-
-      // Send to backend if friction is high
-      if (currentFriction > 10) {
-        socket.emit("telemetry_data", { score: currentFriction });
+  socket.on('telemetry_event', (data: any) => {
+    if (data && typeof data === 'object' && 'type' in data && data.type === 'mouse_move') {
+      if (!clientHistory.has(socket.id)) {
+        clientHistory.set(socket.id, { lastX: Number(data.x) || 0, lastY: Number(data.y) || 0, lastTime: Date.now(), score: 0 });
       }
 
-      // Reset for next window
-      mouseMoveCount.current = 0;
-    }, 1000);
+      const history = clientHistory.get(socket.id);
+      if (!history) return;
 
-    return () => clearInterval(interval);
-  }, []);
+      const currentTime = Date.now();
+      const timeDelta = currentTime - history.lastTime;
 
-  // 3. Increment counter on mouse move
-  const handleMouseMove = () => {
-    mouseMoveCount.current += 1;
-  };
+      if (timeDelta > 50) {
+        const deltaX = Number(data.x) - history.lastX;
+        const deltaY = Number(data.y) - history.lastY;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        
+        const velocity = distance / timeDelta;
+        let calculatedScore = Math.min(100, Math.floor(velocity * 15));
+        
+        history.score = Math.round((history.score * 0.7) + (calculatedScore * 0.3));
+        history.lastX = Number(data.x);
+        history.lastY = Number(data.y);
+        history.lastTime = currentTime;
 
-  return (
-    <div onMouseMove={handleMouseMove} style={{ padding: '20px', border: '1px solid #333' }}>
-      <h2 style={{ color: '#4ade80' }}>{status}</h2>
-      <p style={{ fontSize: '20px' }}>Cognitive Load Score: {score}</p>
-      
-      {generatedCode && (
-        <div style={{ marginTop: '20px', backgroundColor: '#1a1a1a', padding: '15px' }}>
-          <h3>Generated UI Component:</h3>
-          <pre style={{ color: 'white' }}>{generatedCode}</pre>
-        </div>
-      )}
-    </div>
-  );
-}
+        socket.emit('telemetry', { score: history.score });
+      }
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`Client disconnected: ${socket.id}`);
+    clientHistory.delete(socket.id);
+  });
+});
+
+console.log('Socket.IO telemetry server running on port 5000');

@@ -1,41 +1,78 @@
-require('dotenv').config();
-const express = require('express');
-const http = require('http');
 const { Server } = require('socket.io');
-const { GoogleGenAI } = require("@google/genai");
+const { GoogleGenAI } = require('@google/genai');
 
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "http://localhost:3000" } });
-
-// Initialize Gemini with your environment key
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+const io = new Server(5000, {
+  cors: {
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST"]
+  }
+});
+
+const clientHistory = new Map();
+
 io.on('connection', (socket) => {
-  console.log("Client connected:", socket.id);
+  console.log(`Client connected: ${socket.id}`);
+  
+  clientHistory.set(socket.id, { lastX: 0, lastY: 0, lastTime: Date.now(), score: 0, isGenerating: false });
 
-  // Listener for telemetry data
-  socket.on('telemetry_data', async (data, callback) => {
-    console.log("Received telemetry data:", data);
-
-    try {
-      if (data && data.score > 10) {
-        // Trigger AI Generation
-        const response = await ai.models.generateContent({
-          model: "gemini-3.5-flash",
-          contents: "Generate a simplified React wizard component using Tailwind CSS.",
-        });
-
-        socket.emit('code_update', { code: response.text });
-        if (callback) callback({ status: "Success" });
-      } else {
-        if (callback) callback({ status: "Score too low" });
+  socket.on('telemetry_event', async (data) => {
+    if (data && data.type === 'mouse_move') {
+      if (!clientHistory.has(socket.id)) {
+        clientHistory.set(socket.id, { lastX: Number(data.x) || 0, lastY: Number(data.y) || 0, lastTime: Date.now(), score: 0, isGenerating: false });
       }
-    } catch (err) {
-      console.error("Gemini API Error:", err.message);
-      if (callback) callback({ status: "Error", message: err.message });
+
+      const history = clientHistory.get(socket.id);
+      const currentTime = Date.now();
+      const timeDelta = currentTime - history.lastTime;
+
+      if (timeDelta > 50) {
+        const deltaX = Number(data.x) - history.lastX;
+        const deltaY = Number(data.y) - history.lastY;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        
+        const velocity = distance / timeDelta;
+        let calculatedScore = Math.min(100, Math.floor(velocity * 45));
+        
+        history.score = Math.round((history.score * 0.7) + (calculatedScore * 0.3));
+        history.lastX = Number(data.x);
+        history.lastY = Number(data.y);
+        history.lastTime = currentTime;
+
+        socket.emit('telemetry', { score: history.score });
+
+        if (history.score > 20 && !history.isGenerating) {
+          history.isGenerating = true;
+          try {
+            const response = await ai.models.generateContent({
+              model: 'gemini-3.6-flash',
+              contents: `The user's current cognitive load score is high (${history.score}), indicating high user friction. Generate an adaptive UI intervention in strict JSON format with exactly these two keys:
+              {
+                "message": "A short, helpful text intervention to simplify their workflow",
+                "action": "FOCUS_MODE"
+              }`,
+              config: {
+                responseMimeType: "application/json"
+              }
+            });
+            
+            const parsedData = JSON.parse(response.text);
+            socket.emit('ai_intervention', parsedData);
+          } catch (error) {
+            console.error('Error generating content from Gemini SDK:', error);
+          } finally {
+            history.isGenerating = false;
+          }
+        }
+      }
     }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`Client disconnected: ${socket.id}`);
+    clientHistory.delete(socket.id);
   });
 });
 
-server.listen(5000, () => console.log("Backend running on port 5000"));
+console.log('Socket.IO telemetry server with GenAI integration running on port 5000');
