@@ -1,0 +1,1 @@
+﻿import { WebSocketServer } from "ws"; console.log("Starting server..."); const wss = new WebSocketServer({ port: 8080 }, () => { console.log("🚀 AuraGen WebSocket Server running on ws://localhost:8080"); }); wss.on("connection", () => console.log("⚡ Client connected!"));
