@@ -1,106 +1,95 @@
-﻿import { useEffect, useState, useRef, useCallback } from "react";
+﻿import { useEffect, useRef, useCallback } from "react";
 
-export interface UseAuraGenReturn {
-  isConnected: boolean;
-  dynamicCode: string | null;
-  trackClick: () => void;
-  startHesitationTimer: () => void;
-  clearHesitationTimer: () => void;
-}
-
-export function useAuraGen(wsUrl: string = "ws://127.0.0.1:8080"): UseAuraGenReturn {
-  const [dynamicCode, setDynamicCode] = useState<string | null>(null);
-  const [isConnected, setIsConnected] = useState<boolean>(false);
+export function useAuraGen() {
   const wsRef = useRef<WebSocket | null>(null);
+  const clickCountRef = useRef<number>(0);
+  const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hoverTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const clickCount = useRef<number>(0);
-  const clickTimer = useRef<NodeJS.Timeout | null>(null);
-  const hesitationTimer = useRef<NodeJS.Timeout | null>(null);
-
-  // Initialize and maintain single WebSocket connection
   useEffect(() => {
-    let socket: WebSocket | null = new WebSocket(wsUrl);
-    wsRef.current = socket;
+    const socket = new WebSocket("ws://127.0.0.1:8080");
 
     socket.onopen = () => {
-      console.log("⚡ [AuraGen] Connected to WebSocket server!");
-      setIsConnected(true);
-    };
-
-    socket.onmessage = (event: MessageEvent) => {
-      console.log("📥 [AuraGen] Message received:", event.data);
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === "UI_MUTATION" && data.code) {
-          console.log("✨ [AuraGen] Dynamic code injected!");
-          setDynamicCode(data.code);
-        }
-      } catch (err) {
-        console.error("❌ [AuraGen] Failed to parse message:", err);
-      }
+      console.log("🟢 [CLIENT] WebSocket connected to ws://127.0.0.1:8080");
     };
 
     socket.onerror = (err) => {
-      console.error("❌ [AuraGen] WebSocket Error:", err);
+      console.error("🔴 [CLIENT] WebSocket connection error:", err);
     };
 
-    socket.onclose = () => {
-      console.log("🔌 [AuraGen] Disconnected from server");
-      setIsConnected(false);
-    };
+    wsRef.current = socket;
 
     return () => {
-      if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
-        socket.close();
-      }
+      socket.close();
     };
-  }, [wsUrl]);
-
-  // Guaranteed direct dispatch to active socket
-  const sendTelemetry = useCallback((telemetryData: { rageClicks: number; hesitationTime: number }) => {
-    const activeWs = wsRef.current;
-
-    if (activeWs && activeWs.readyState === WebSocket.OPEN) {
-      console.log("📤 [AuraGen] Direct dispatching frame:", telemetryData);
-      activeWs.send(JSON.stringify(telemetryData));
-    } else {
-      console.warn("⚠️ [AuraGen] Socket not ready. State:", activeWs ? activeWs.readyState : "NULL");
-    }
   }, []);
 
-  const trackClick = useCallback(() => {
-    clickCount.current += 1;
+  // Scans all interactive form controls on the page to build the state object
+  const captureCurrentFormState = useCallback(() => {
+    const formState: Record<string, string> = {};
+    const inputs = document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+      "input, select, textarea"
+    );
 
-    if (clickTimer.current) clearTimeout(clickTimer.current);
-    clickTimer.current = setTimeout(() => {
-      clickCount.current = 0;
-    }, 1500);
+    inputs.forEach((input) => {
+      // Safely access placeholder only if the property exists on the element
+      const placeholderVal = "placeholder" in input ? (input as HTMLInputElement | HTMLTextAreaElement).placeholder : "";
+      const key = input.name || input.id || placeholderVal;
 
-    if (clickCount.current >= 4) {
-      console.warn("⚠️ Friction Detected: Rage Clicking!");
-      sendTelemetry({ rageClicks: clickCount.current, hesitationTime: 0 });
-      clickCount.current = 0;
+      if (key) {
+        formState[key] = input.value;
+      }
+    });
+
+    return formState;
+  }, []);
+
+  const sendTelemetry = useCallback((frictionType: "rageClick" | "hesitation") => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      const currentState = captureCurrentFormState();
+      const payload = {
+        rageClicks: frictionType === "rageClick" ? 4 : 0,
+        hesitationTime: frictionType === "hesitation" ? 3000 : 0,
+        currentState: currentState,
+        timestamp: Date.now(),
+      };
+
+      console.log("📤 [CLIENT] Dispatching Telemetry Payload:", payload);
+      wsRef.current.send(JSON.stringify(payload));
     }
+  }, [captureCurrentFormState]);
+
+  const handlePointerDown = useCallback(() => {
+    clickCountRef.current += 1;
+
+    if (clickCountRef.current >= 4) {
+      console.log("⚠️ [CLIENT] Rage Click Detected!");
+      sendTelemetry("rageClick");
+      clickCountRef.current = 0;
+    }
+
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+    clickTimerRef.current = setTimeout(() => {
+      clickCountRef.current = 0;
+    }, 1500);
   }, [sendTelemetry]);
 
-  const startHesitationTimer = useCallback(() => {
-    if (hesitationTimer.current) clearTimeout(hesitationTimer.current);
-
-    hesitationTimer.current = setTimeout(() => {
-      console.warn("⚠️ Friction Detected: User Hesitation!");
-      sendTelemetry({ rageClicks: 0, hesitationTime: 3000 });
+  const handleMouseEnter = useCallback(() => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => {
+      console.log("⚠️ [CLIENT] Hesitation Detected (3s Hover)!");
+      sendTelemetry("hesitation");
     }, 3000);
   }, [sendTelemetry]);
 
-  const clearHesitationTimer = useCallback(() => {
-    if (hesitationTimer.current) clearTimeout(hesitationTimer.current);
+  const handleMouseLeave = useCallback(() => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
   }, []);
 
   return {
-    isConnected,
-    dynamicCode,
-    trackClick,
-    startHesitationTimer,
-    clearHesitationTimer,
+    wsRef,
+    handlePointerDown,
+    handleMouseEnter,
+    handleMouseLeave,
   };
 }

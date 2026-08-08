@@ -1,52 +1,65 @@
-﻿"use client";
+﻿'use client';
 
-import React, { useMemo } from "react";
-import * as Babel from "@babel/standalone";
+import React, { ComponentType, RefObject, Suspense } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
-interface DynamicRenderProps {
-  code: string;
+export interface DynamicRenderProps {
+  /** Optional WebSocket ref passed down to dynamic components */
+  wsRef?: RefObject<WebSocket | null>;
+  /** The dynamically resolved or compiled component to render */
+  component?: ComponentType<any>;
+  /** Optional fallback UI to display while component suspends */
+  fallback?: React.ReactNode;
+  /** Props passed directly through to the target component */
+  componentProps?: Record<string, any>;
+  /** Optional custom children override */
+  children?: React.ReactNode;
 }
 
-export default function DynamicRender({ code }: DynamicRenderProps) {
-  const Component = useMemo(() => {
-    if (!code) return null;
-
-    try {
-      console.log("🎨 DynamicRender compiling raw JSX code...");
-
-      // 1. Transform JSX and modern ES6 to runnable ES5
-      const transformResult = Babel.transform(code, {
-        presets: ["react", "env"],
-        filename: "dynamic.tsx",
-      });
-
-      const transformedCode = transformResult.code || "";
-
-      // 2. Create CommonJS export containers
-      const exports: { default?: React.ComponentType } = {};
-      const module = { exports };
-
-      // 3. Safely evaluate component factory
-      const runComponent = new Function("React", "exports", "module", transformedCode);
-      runComponent(React, exports, module);
-
-      // 4. Extract default component or exported function
-      return module.exports.default || (module.exports as unknown as React.ComponentType);
-    } catch (err) {
-      console.error("❌ DynamicRender compilation error:", err);
-      return () => (
-        <div className="p-4 bg-red-950/50 border border-red-500 rounded-xl text-red-200 text-xs font-mono">
-          ⚠️ Syntax error in generated UI mutation payload.
-        </div>
-      );
-    }
-  }, [code]);
-
-  if (!Component) return null;
+/**
+ * DynamicRender Component
+ * Smoothly morphs and renders dynamic components with state persistence and Framer Motion transitions.
+ */
+export const DynamicRender: React.FC<DynamicRenderProps> = ({
+  wsRef,
+  component: Component,
+  fallback = (
+    <div className="p-4 text-sm text-slate-400 animate-pulse bg-slate-800/50 rounded-lg">
+      Generating contextual UI...
+    </div>
+  ),
+  componentProps = {},
+  children,
+}) => {
+  // Determine animation key based on component identity or props
+  const componentKey = Component
+    ? Component.displayName || Component.name || 'dynamic-ui'
+    : 'empty-ui';
 
   return (
-    <div className="w-full transition-all duration-500 ease-out animate-in fade-in slide-in-from-bottom-4">
-      <Component />
-    </div>
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={componentKey}
+        initial={{ opacity: 0, y: 12, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -12, scale: 0.98 }}
+        transition={{ duration: 0.35, ease: 'easeOut' }}
+        className="w-full"
+      >
+        {children ? (
+          children
+        ) : Component ? (
+          <Suspense fallback={fallback}>
+            <Component wsRef={wsRef} {...componentProps} />
+          </Suspense>
+        ) : (
+          <div className="p-4 rounded-lg border border-dashed border-slate-700 bg-slate-900/40 text-slate-400 text-sm text-center">
+            Awaiting dynamic component injection...
+          </div>
+        )}
+      </motion.div>
+    </AnimatePresence>
   );
-}
+};
+
+export default DynamicRender;

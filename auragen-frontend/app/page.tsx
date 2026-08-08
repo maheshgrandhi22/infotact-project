@@ -1,63 +1,90 @@
-"use client";
+'use client';
 
-import React from "react";
-import { useAuraGen } from "@/hooks/useAuraGen";
-import DynamicRender from "@/components/DynamicRender";
+import React, { useState, useRef } from 'react';
+import DynamicRender from '@/components/DynamicRender';
+
+// Dynamic component that receives live formState props
+const ContextualDynamicCard = ({ formState }: { formState: { fullName: string; email: string } }) => (
+  <div className="p-6 bg-slate-900 border border-indigo-500/50 rounded-xl space-y-3">
+    <div className="flex items-center justify-between">
+      <h3 className="text-sm font-semibold text-indigo-400">Context-Aware Morphing Step</h3>
+      <span className="text-xs px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300">Live Context</span>
+    </div>
+    <p className="text-xs text-slate-300">
+      Active User: <strong className="text-indigo-200">{formState.fullName || '(Empty)'}</strong>
+    </p>
+    <p className="text-xs text-slate-300">
+      Email Address: <strong className="text-indigo-200">{formState.email || '(Empty)'}</strong>
+    </p>
+  </div>
+);
 
 export default function Home() {
-  const {
-    isConnected,
-    dynamicCode,
-    trackClick,
-    startHesitationTimer,
-    clearHesitationTimer,
-  } = useAuraGen("ws://localhost:8080");
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // Form state initialized with editable default values
+  const [formState, setFormState] = useState({
+    fullName: 'mahesh',
+    email: 'mahesh@gmail.com',
+  });
+
+  // Load the dynamic component into state
+  const [dynamicComponent, setDynamicComponent] = useState<React.ComponentType<any> | null>(
+    () => ContextualDynamicCard
+  );
+
+  // Robust input change handler
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormState((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
 
   return (
-    <main className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6">
-      {/* Connection Indicator */}
-      <div className="absolute top-6 right-6 flex items-center gap-2 bg-slate-800 px-4 py-2 rounded-full border border-slate-700 shadow-md">
-        <span
-          className={`w-3 h-3 rounded-full ${
-            isConnected ? "bg-emerald-500 animate-pulse" : "bg-red-500"
-          }`}
-        />
-        <span className="text-xs font-mono text-slate-300">
-          {isConnected ? "Engine Connected" : "Engine Disconnected"}
-        </span>
-      </div>
-
-      <div className="max-w-xl w-full text-center space-y-6">
-        <h1 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
-          AuraGen Dynamic UI Test
-        </h1>
-
-        <p className="text-slate-400 text-sm">
-          Click the button repeatedly (Rage Clicks) or hover without clicking (Hesitation) to trigger an automated UI mutation injection from the backend!
-        </p>
-
-        {/* Telemetry Trigger Button */}
-        <div className="p-8 bg-slate-800/60 rounded-2xl border border-slate-700/60 backdrop-blur-sm space-y-4">
-          <button
-            onClick={trackClick}
-            onMouseEnter={startHesitationTimer}
-            onMouseLeave={clearHesitationTimer}
-            className="w-full py-4 px-6 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer"
-          >
-            Click Me Rapidly or Hover 3s
-          </button>
+    <main className="min-h-screen bg-slate-950 text-white p-8 flex flex-col items-center justify-center">
+      <div className="w-full max-w-xl space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-indigo-400">AuraGen Dynamic UI System</h1>
+          <p className="text-sm text-slate-400">State-aware UI morphing & friction tracking active.</p>
         </div>
 
-        {/* ⚡ Dynamic UI Injector Slot */}
-        {dynamicCode ? (
-          <div className="mt-8">
-            <DynamicRender code={dynamicCode} />
+        {/* Static Base Form */}
+        <div className="p-6 bg-slate-900 rounded-xl border border-slate-800 space-y-4">
+          <h2 className="text-lg font-semibold text-slate-200">Application Form</h2>
+
+          <div>
+            <label className="block text-xs text-slate-400 mb-1">Full Name</label>
+            <input
+              type="text"
+              name="fullName"
+              value={formState.fullName}
+              onChange={handleInputChange}
+              placeholder="Enter full name"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-indigo-500 text-white"
+            />
           </div>
-        ) : (
-          <div className="mt-6 p-4 border border-dashed border-slate-700 rounded-xl text-slate-500 text-xs font-mono">
-            Waiting for friction telemetry to trigger dynamic UI mutation...
+
+          <div>
+            <label className="block text-xs text-slate-400 mb-1">Email Address</label>
+            <input
+              type="email"
+              name="email"
+              value={formState.email}
+              onChange={handleInputChange}
+              placeholder="Enter email address"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-indigo-500 text-white"
+            />
           </div>
-        )}
+        </div>
+
+        {/* Dynamic UI Slot */}
+        <DynamicRender
+          wsRef={wsRef}
+          component={dynamicComponent || undefined}
+          componentProps={{ formState, setFormState }}
+        />
       </div>
     </main>
   );
