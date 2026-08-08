@@ -41,7 +41,6 @@ export default function Home() {
     () => ContextualDynamicCard
   );
 
-  // Handle incoming streaming tokens and compile code once full code is ready
   const handleWSMessage = useCallback((data: any) => {
     if ((data.type === 'COMPONENT_GENERATED' || data.type === 'CODE_STREAM_CHUNK') && data.code) {
       try {
@@ -53,7 +52,7 @@ export default function Home() {
     }
   }, []);
 
-  const { wsRef, isConnected } = useWebSocket('ws://localhost:8080', handleWSMessage);
+  const { wsRef, isConnected } = useWebSocket('ws://127.0.0.1:8080', handleWSMessage);
 
   useFrictionTracker({ wsRef, formState });
 
