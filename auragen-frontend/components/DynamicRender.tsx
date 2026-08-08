@@ -1,65 +1,56 @@
 ﻿'use client';
 
-import React, { ComponentType, RefObject, Suspense } from 'react';
+import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-export interface DynamicRenderProps {
-  /** Optional WebSocket ref passed down to dynamic components */
-  wsRef?: RefObject<WebSocket | null>;
-  /** The dynamically resolved or compiled component to render */
-  component?: ComponentType<any>;
-  /** Optional fallback UI to display while component suspends */
-  fallback?: React.ReactNode;
-  /** Props passed directly through to the target component */
+interface DynamicRenderProps {
+  component?: React.ComponentType<any>;
   componentProps?: Record<string, any>;
-  /** Optional custom children override */
+  wsRef?: React.RefObject<WebSocket | null>;
   children?: React.ReactNode;
 }
 
-/**
- * DynamicRender Component
- * Smoothly morphs and renders dynamic components with state persistence and Framer Motion transitions.
- */
-export const DynamicRender: React.FC<DynamicRenderProps> = ({
-  wsRef,
+export default function DynamicRender({
   component: Component,
-  fallback = (
-    <div className="p-4 text-sm text-slate-400 animate-pulse bg-slate-800/50 rounded-lg">
-      Generating contextual UI...
-    </div>
-  ),
   componentProps = {},
+  wsRef,
   children,
-}) => {
-  // Determine animation key based on component identity or props
-  const componentKey = Component
-    ? Component.displayName || Component.name || 'dynamic-ui'
-    : 'empty-ui';
-
+}: DynamicRenderProps) {
   return (
-    <AnimatePresence mode="wait">
-      <motion.div
-        key={componentKey}
-        initial={{ opacity: 0, y: 12, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: -12, scale: 0.98 }}
-        transition={{ duration: 0.35, ease: 'easeOut' }}
-        className="w-full"
-      >
-        {children ? (
-          children
-        ) : Component ? (
-          <Suspense fallback={fallback}>
-            <Component wsRef={wsRef} {...componentProps} />
-          </Suspense>
+    <div className="w-full relative">
+      <AnimatePresence mode="wait">
+        {Component ? (
+          <motion.div
+            key="dynamic-component"
+            initial={{ opacity: 0, y: 15, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -15, scale: 0.98 }}
+            transition={{ duration: 0.35, ease: 'easeInOut' }}
+          >
+            <Component {...componentProps} wsRef={wsRef} />
+          </motion.div>
+        ) : children ? (
+          <motion.div
+            key="children-slot"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.35, ease: 'easeInOut' }}
+          >
+            {children}
+          </motion.div>
         ) : (
-          <div className="p-4 rounded-lg border border-dashed border-slate-700 bg-slate-900/40 text-slate-400 text-sm text-center">
+          <motion.div
+            key="placeholder"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="p-6 rounded-xl bg-slate-900/50 border border-dashed border-slate-800 text-center text-xs text-slate-500"
+          >
             Awaiting dynamic component injection...
-          </div>
+          </motion.div>
         )}
-      </motion.div>
-    </AnimatePresence>
+      </AnimatePresence>
+    </div>
   );
-};
-
-export default DynamicRender;
+}
