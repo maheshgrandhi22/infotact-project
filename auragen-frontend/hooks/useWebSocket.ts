@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-export function useWebSocket(url: string = 'ws://localhost:8080') {
+export function useWebSocket(
+  url: string = 'ws://localhost:8080',
+  onMessageCallback?: (data: any) => void
+) {
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
@@ -19,6 +22,9 @@ export function useWebSocket(url: string = 'ws://localhost:8080') {
       try {
         const message = JSON.parse(event.data);
         console.log('[AuraGen WS] Received message:', message);
+        if (onMessageCallback) {
+          onMessageCallback(message);
+        }
       } catch (err) {
         console.error('[AuraGen WS] Failed to parse message:', err);
       }
@@ -36,7 +42,7 @@ export function useWebSocket(url: string = 'ws://localhost:8080') {
     return () => {
       ws.close();
     };
-  }, [url]);
+  }, [url, onMessageCallback]);
 
   return { wsRef, isConnected };
 }
