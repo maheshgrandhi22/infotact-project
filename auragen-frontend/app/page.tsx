@@ -41,12 +41,15 @@ export default function Home() {
     () => ContextualDynamicCard
   );
 
-  // Handle incoming WS messages and compile code on the fly
+  // Handle incoming streaming tokens and compile code once full code is ready
   const handleWSMessage = useCallback((data: any) => {
-    if (data.type === 'COMPONENT_GENERATED' && data.code) {
-      console.log('[AuraGen] Compiling newly received component code...');
-      const CompiledComponent = compileJSX(data.code);
-      setDynamicComponent(() => CompiledComponent);
+    if ((data.type === 'COMPONENT_GENERATED' || data.type === 'CODE_STREAM_CHUNK') && data.code) {
+      try {
+        const CompiledComponent = compileJSX(data.code);
+        setDynamicComponent(() => CompiledComponent);
+      } catch (err) {
+        console.warn('[AuraGen] Partial code chunk compile pending full structure.');
+      }
     }
   }, []);
 
