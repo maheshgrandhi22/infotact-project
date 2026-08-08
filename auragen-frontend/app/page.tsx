@@ -3,8 +3,17 @@
 import React, { useState, useRef } from 'react';
 import DynamicRender from '@/components/DynamicRender';
 
-// Flexibly typed mock component to pass strict CI build checks on GitHub
-const ContextualDynamicCard: React.FC<any> = ({ formState }) => (
+interface FormState {
+  fullName: string;
+  email: string;
+}
+
+interface DynamicCardProps {
+  formState?: FormState;
+  setFormState?: React.Dispatch<React.SetStateAction<FormState>>;
+}
+
+const ContextualDynamicCard: React.FC<DynamicCardProps> = ({ formState }) => (
   <div className="p-6 bg-slate-900 border border-indigo-500/50 rounded-xl space-y-3">
     <div className="flex items-center justify-between">
       <h3 className="text-sm font-semibold text-indigo-400">Context-Aware Morphing Step</h3>
@@ -22,18 +31,15 @@ const ContextualDynamicCard: React.FC<any> = ({ formState }) => (
 export default function Home() {
   const wsRef = useRef<WebSocket | null>(null);
 
-  // Form state initialized with editable default values
-  const [formState, setFormState] = useState({
+  const [formState, setFormState] = useState<FormState>({
     fullName: 'mahesh',
     email: 'mahesh@gmail.com',
   });
 
-  // Load dynamic component into state
-  const [dynamicComponent, setDynamicComponent] = useState<React.ComponentType<any> | null>(
+  const [dynamicComponent, setDynamicComponent] = useState<React.ComponentType<DynamicCardProps> | null>(
     () => ContextualDynamicCard
   );
 
-  // Input change handler
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormState((prev) => ({
@@ -50,7 +56,6 @@ export default function Home() {
           <p className="text-sm text-slate-400">State-aware UI morphing & friction tracking active.</p>
         </div>
 
-        {/* Static Base Form */}
         <div className="p-6 bg-slate-900 rounded-xl border border-slate-800 space-y-4">
           <h2 className="text-lg font-semibold text-slate-200">Application Form</h2>
 
@@ -79,7 +84,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Dynamic UI Slot */}
         <DynamicRender
           wsRef={wsRef}
           component={dynamicComponent || undefined}
