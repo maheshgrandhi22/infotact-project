@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import DynamicRender from '@/components/DynamicRender';
 import { useFrictionTracker } from '@/hooks/useFrictionTracker';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { compileJSX } from '@/utils/compileJSX';
 
 interface FormState {
   fullName: string;
@@ -31,10 +32,6 @@ const ContextualDynamicCard: React.FC<DynamicCardProps> = ({ formState }) => (
 );
 
 export default function Home() {
-  // 1. Initialize active WebSocket connection
-  const { wsRef, isConnected } = useWebSocket('ws://localhost:8080');
-
-  // 2. Initialize form state
   const [formState, setFormState] = useState<FormState>({
     fullName: 'mahesh',
     email: 'mahesh@gmail.com',
@@ -44,7 +41,17 @@ export default function Home() {
     () => ContextualDynamicCard
   );
 
-  // 3. Track real-time user friction events
+  // Handle incoming WS messages and compile code on the fly
+  const handleWSMessage = useCallback((data: any) => {
+    if (data.type === 'COMPONENT_GENERATED' && data.code) {
+      console.log('[AuraGen] Compiling newly received component code...');
+      const CompiledComponent = compileJSX(data.code);
+      setDynamicComponent(() => CompiledComponent);
+    }
+  }, []);
+
+  const { wsRef, isConnected } = useWebSocket('ws://localhost:8080', handleWSMessage);
+
   useFrictionTracker({ wsRef, formState });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -63,7 +70,6 @@ export default function Home() {
             <h1 className="text-2xl font-bold text-indigo-400">AuraGen Dynamic UI System</h1>
             <p className="text-sm text-slate-400">State-aware UI morphing & friction tracking active.</p>
           </div>
-          {/* WebSocket Live Status Indicator */}
           <div className="flex items-center space-x-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full">
             <span
               className={`h-2.5 w-2.5 rounded-full ${
@@ -76,7 +82,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Form Container */}
         <div className="p-6 bg-slate-900 rounded-xl border border-slate-800 space-y-4">
           <h2 className="text-lg font-semibold text-slate-200">Application Form</h2>
 
@@ -105,7 +110,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Dynamic Component Slot */}
         <DynamicRender
           wsRef={wsRef}
           component={dynamicComponent || undefined}
